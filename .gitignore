@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+.env
+.env.local
+.vite/
+*.tsbuildinfo
+
+# 交付用的源码打包产物
+explorer-src.tar.gz

@@ -1,0 +1,49 @@
+appId: com.workbuddy.explorer
+productName: Explorer
+copyright: Copyright © 2025
+
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+  - '!node_modules'
+
+# 预览后端绝不能进产物
+directories:
+  output: release
+  buildResources: build
+
+asar: true
+asarUnpack:
+  - 'dist/main/**/*.node'
+
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  category: public.app-category.utilities
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  minimumSystemVersion: '12.0.0'
+  # 签名：若你有 Apple Developer ID，填 DEVELOPER_ID；否则未签名，README 会说明绕行
+  identity: null
+  extendInfo:
+    NSCameraUsageDescription: 'Explorer 不需要访问相机'
+    NSMicrophoneUsageDescription: 'Explorer 不需要访问麦克风'
+    NSDesktopFolderUsageDescription: 'Explorer 需要访问桌面以浏览文件'
+    NSDocumentsFolderUsageDescription: 'Explorer 需要访问文稿以浏览文件'
+    NSDownloadsFolderUsageDescription: 'Explorer 需要访问下载以浏览文件'
+
+# 沙箱（Linux）仅用于配置自检，不是正式产物
+linux:
+  target:
+    - target: dir
+      arch: x64
+  category: Utility
+  maintainer: 'WorkBuddy'
+  vendor: 'WorkBuddy'

@@ -1,0 +1,84 @@
+/**
+ * Windows 11 设计令牌。
+ *
+ * 字体首选 Segoe UI（Windows 原生观感），在 macOS 上自动回退到 SF Pro / 苹方，
+ * 所以即使在 Mac 上运行也保持 Windows 的视觉比例与间距。
+ */
+:root {
+  --font-ui: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* 亮色主题 */
+  --bg-app: #f3f3f3;
+  --bg-surface: #ffffff;
+  --bg-elevated: #fbfbfb;
+  --bg-subtle: #f9f9f9;
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-pressed: rgba(0, 0, 0, 0.08);
+  --bg-selected: #cfe6ff;
+  --bg-selected-hover: #c2dffd;
+  --bg-header: #f9f9f9;
+
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.16);
+
+  --text: #1b1b1b;
+  --text-secondary: #5f5f5f;
+  --text-disabled: #a0a0a0;
+
+  --accent: #0067c0;
+  --accent-hover: #1979d2;
+  --accent-text: #ffffff;
+  --danger: #c42b1c;
+  --danger-hover: #d13438;
+
+  --shadow-menu: 0 6px 20px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.12);
+
+  --row-height: 28px;
+  --nav-width: 244px;
+  --titlebar-height: 36px;
+  --cmdbar-height: 68px;
+  --addrbar-height: 40px;
+  --statusbar-height: 28px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #202020;
+    --bg-surface: #2b2b2b;
+    --bg-elevated: #333333;
+    --bg-subtle: #292929;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-pressed: rgba(255, 255, 255, 0.1);
+    --bg-selected: #3a5a80;
+    --bg-selected-hover: #41648c;
+    --bg-header: #2b2b2b;
+
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    --text: #ffffff;
+    --text-secondary: #b8b8b8;
+    --text-disabled: #6f6f6f;
+
+    --accent: #4cb2ff;
+    --accent-hover: #62bdff;
+    --accent-text: #10202c;
+    --danger: #ff6b5e;
+    --danger-hover: #ff857a;
+
+    --shadow-menu: 0 6px 20px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "mac-win-explorer",
+  "productName": "Explorer",
+  "version": "1.0.0",
+  "description": "运行在 macOS 上的仿 Windows 资源管理器风格文件浏览器",
+  "main": "dist/main/index.js",
+  "private": true,
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "scripts": {
+    "setup:electron": "install-electron",
+    "dev": "node scripts/dev-desktop.mjs",
+    "dev:web": "node scripts/dev-web.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "check": "node scripts/check-contract.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "icon": "bash scripts/make-icns.sh",
+    "dist": "npm run icon && npm run build && electron-builder --mac --arm64",
+    "dist:arm64": "npm run icon && npm run build && electron-builder --mac --arm64",
+    "dist:x64": "npm run icon && npm run build && electron-builder --mac --x64",
+    "dist:dir": "npm run icon && npm run build && electron-builder --mac --arm64 --dir",
+    "dist:linux:dir": "npm run build && electron-builder --linux --dir",
+    "clean": "rimraf dist release"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "concurrently": "^10.0.5",
+    "electron": "43.4.1",
+    "electron-builder": "26.15.3",
+    "electronmon": "^2.0.4",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.62.1",
+    "express": "^5.2.1",
+    "rimraf": "^6.1.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "wait-on": "^9.1.0"
+  }
+}
