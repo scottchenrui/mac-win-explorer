@@ -15,10 +15,17 @@ export async function invokeHandler(
   ctx: CoreContext,
   name: ApiName,
   raw: unknown,
+  watchOwner?: string,
 ): Promise<Result<unknown>> {
   try {
     const handler = handlers[name] as unknown as AnyHandler;
     const request = handler.validate(raw ?? {});
+    if (watchOwner && (name === 'watchStart' || name === 'watchStop')) {
+      const { path } = request as { path: string };
+      if (name === 'watchStart') return { ok: true, data: { watching: ctx.watcher.watch(path, watchOwner) } };
+      ctx.watcher.unwatch(path, watchOwner);
+      return { ok: true, data: { watching: false } };
+    }
     const data = await handler.exec(request, ctx);
     return { ok: true, data: data ?? null };
   } catch (e) {

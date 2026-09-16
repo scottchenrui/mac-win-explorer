@@ -13,7 +13,7 @@ import { useAppStore } from './store/appStore';
 import { useTransferStore } from './store/transferStore';
 import { useFileActions } from './hooks/useFileActions';
 import { useShortcuts } from './hooks/useShortcuts';
-import { subscribeMenuAction, subscribeOpenFile, subscribeProgress, subscribeWatch, openNewWindow } from './api/events';
+import { subscribeMenuAction, subscribeOpenFile, subscribeProgress, subscribeWatch, subscribeClipboard, openNewWindow } from './api/events';
 import { api } from './api';
 
 export function App(): JSX.Element {
@@ -43,9 +43,14 @@ export function App(): JSX.Element {
       // 只刷新当前正在看的目录，避免后台目录改动触发无谓请求
       if (changed === current) void useAppStore.getState().refresh();
     });
+    // 剪贴板跨窗口共享：任一窗口复制/剪切后，所有窗口同步更新本地镜像
+    const offClipboard = subscribeClipboard((payload) => {
+      useAppStore.getState().applyClipboard(payload);
+    });
     return () => {
       offProgress();
       offWatch();
+      offClipboard();
     };
   }, []);
 
@@ -82,23 +87,11 @@ export function App(): JSX.Element {
   );
 
   // 原生菜单动作：macOS 菜单栏 / Dock 拖拽等入口与 UI 按钮共用逻辑
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
   useEffect(() => {
     const off = subscribeMenuAction((id) => {
       const app = useAppStore.getState();
       const dialog = useDialogStore.getState();
-      const a = actionsRef.current;
       switch (id) {
-        case 'cut':
-          a.cutSelection();
-          return;
-        case 'copy':
-          a.copySelection();
-          return;
-        case 'paste':
-          void a.pasteHere();
-          return;
         case 'selectAll':
           app.selectAll();
           return;

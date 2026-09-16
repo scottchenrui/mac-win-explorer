@@ -1,3 +1,5 @@
+import { isTextEditor, routeClipboard } from '../utils/clipboard';
+import { visibleEntries } from '../store/visibleEntries';
 import { useEffect } from 'react';
 import { isModPressed } from '../utils/platform';
 import type { FileActions } from './useFileActions';
@@ -23,8 +25,7 @@ export function useShortcuts(handlers: ShortcutHandlers, addressRef: React.RefOb
       if (e.isComposing || e.keyCode === 229) return;
 
       const target = e.target as HTMLElement | null;
-      const typing =
-        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      const typing = isTextEditor(target);
 
       if (typing) {
         if (e.key === 'Escape') target?.blur();
@@ -42,17 +43,26 @@ export function useShortcuts(handlers: ShortcutHandlers, addressRef: React.RefOb
         return;
       }
 
-      if (mod && key.toLowerCase() === 'c') {
+      // 双击文件名会产生原生文本选区。此时 Cmd+C/X 的意图是复制/剪切“文字”，
+      // 若接管成复制/剪切“文件”，系统剪贴板拿不到文字、内部剪贴板却被塞进文件，
+      // 之后一次 Cmd+V 就会把文件粘贴出去并弹出莫名其妙的冲突框。
+      const textSelected = (window.getSelection()?.toString() ?? '') !== '';
+
+      if (mod && !e.shiftKey && key.toLowerCase() === 'c') {
+        if (textSelected) return; // 交给浏览器复制选中的文字
         e.preventDefault();
         handlers.copySelection();
         return;
       }
-      if (mod && key.toLowerCase() === 'x') {
+      if (mod && !e.shiftKey && key.toLowerCase() === 'x') {
+        if (textSelected) return;
         e.preventDefault();
         handlers.cutSelection();
         return;
       }
       if (mod && key.toLowerCase() === 'v') {
+        // 行内重命名进行中：Cmd+V 是要往输入框贴文字，不能触发文件粘贴
+        if (app.renamingPath !== null) return;
         e.preventDefault();
         void handlers.pasteHere();
         return;
@@ -150,7 +160,7 @@ export function useShortcuts(handlers: ShortcutHandlers, addressRef: React.RefOb
       // 上下键移动选中项（详细信息视图下的键盘导航）
       if (key === 'ArrowDown' || key === 'ArrowUp') {
         e.preventDefault();
-        const list = app.entries;
+        const list = visibleEntries(app);
         if (list.length === 0) return;
         const currentIndex = list.findIndex((item) => item.path === app.selection[0]);
         const nextIndex =
@@ -162,7 +172,24 @@ export function useShortcuts(handlers: ShortcutHandlers, addressRef: React.RefOb
       }
     };
 
+    // macOS 原生编辑菜单触发 clipboard 事件，不一定触发页面 keydown。
+    const onClipboard = (event: ClipboardEvent): void => {
+      routeClipboard(event, {
+        editing: isTextEditor(document.activeElement) || isTextEditor(event.target instanceof Element ? event.target : null),
+        textSelected: (window.getSelection()?.toString() ?? '') !== '',
+        renaming: useAppStore.getState().renamingPath !== null,
+        dialogOpen: useDialogStore.getState().dialog.kind !== 'none',
+      }, handlers);
+    };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    document.addEventListener('copy', onClipboard);
+    document.addEventListener('cut', onClipboard);
+    document.addEventListener('paste', onClipboard);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('copy', onClipboard);
+      document.removeEventListener('cut', onClipboard);
+      document.removeEventListener('paste', onClipboard);
+    };
   }, [handlers, addressRef]);
 }

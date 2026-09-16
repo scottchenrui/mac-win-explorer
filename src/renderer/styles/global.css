@@ -197,14 +197,6 @@ input {
   min-width: 8px;
 }
 
-.cmdbar__popup {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 60;
-  padding-top: 2px;
-}
-
 /* ---------------- 地址栏 ---------------- */
 
 .addrbar {
@@ -839,13 +831,6 @@ input {
   display: grid;
   place-items: center;
   flex: none;
-}
-
-/* 命令栏下拉里的菜单是相对定位的 */
-.cmdbar__popup .menu {
-  position: relative;
-  left: 0 !important;
-  top: 0 !important;
 }
 
 /* ---------------- 模态对话框 ---------------- */

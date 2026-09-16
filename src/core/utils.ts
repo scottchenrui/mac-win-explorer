@@ -14,7 +14,9 @@ export async function mapLimit<T, R>(
       results[i] = await fn(items[i], i);
     }
   });
-  await Promise.all(workers);
+  const settled = await Promise.allSettled(workers);
+  const failed = settled.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') throw failed.reason;
   return results;
 }
 

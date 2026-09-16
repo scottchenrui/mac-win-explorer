@@ -1,5 +1,6 @@
 import type { Result } from './errors';
 import type {
+  ClipboardPayload,
   ConflictAction,
   ConflictPolicy,
   FsEntry,
@@ -40,6 +41,9 @@ export interface ApiRequestMap {
   };
   resolveConflict: { opId: string; action: ConflictAction; applyToAll: boolean };
   cancelTransfer: { opId: string };
+  setClipboard: { mode: TransferOp; paths: string[] };
+  clearClipboard: void;
+  getClipboard: void;
   copyPathsToClipboard: { paths: string[] };
   openItem: { path: string };
   revealItem: { path: string };
@@ -82,6 +86,9 @@ export interface ApiResponseMap {
   paste: { opId: string };
   resolveConflict: { accepted: boolean };
   cancelTransfer: { accepted: boolean };
+  setClipboard: ClipboardPayload | null;
+  clearClipboard: ClipboardPayload | null;
+  getClipboard: ClipboardPayload | null;
   copyPathsToClipboard: { count: number };
   openItem: { error?: string };
   revealItem: { ok: boolean };
@@ -125,6 +132,9 @@ export const API_NAMES = [
   'paste',
   'resolveConflict',
   'cancelTransfer',
+  'setClipboard',
+  'clearClipboard',
+  'getClipboard',
   'copyPathsToClipboard',
   'openItem',
   'revealItem',
@@ -140,9 +150,11 @@ export type MissingApiName = Exclude<ApiName, (typeof API_NAMES)[number]>;
 /** 流式事件（不走 request/response） */
 export type ApiEvent =
   | { type: 'progress'; payload: TransferProgress }
-  | { type: 'watch'; payload: { path: string } };
+  | { type: 'watch'; payload: { path: string } }
+  | { type: 'clipboard'; payload: ClipboardPayload | null };
 
 export const IPC_CHANNEL_PREFIX = 'api:';
 export const IPC_EVENT_PROGRESS = 'api:progress';
 export const IPC_EVENT_WATCH = 'api:watch';
+export const IPC_EVENT_CLIPBOARD = 'api:clipboard';
 export const IPC_EVENT_MENU = 'menu:action';

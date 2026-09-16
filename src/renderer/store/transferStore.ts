@@ -23,6 +23,22 @@ function newOpId(): string {
     : `op-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * 传输完成订阅（按目标目录）。
+ *
+ * 目录树节点粘贴后需要刷新自己的子项，但节点内容存在各自的
+ * React 状态里；用这个轻量总线把“某目录被写入”的事件派发给关心的节点。
+ */
+type DoneListener = (destDir: string) => void;
+const doneListeners = new Set<DoneListener>();
+
+export function onTransferDone(listener: DoneListener): () => void {
+  doneListeners.add(listener);
+  return () => {
+    doneListeners.delete(listener);
+  };
+}
+
 export const useTransferStore = create<TransferState>()((set, get) => ({
   active: [],
   conflict: null,
@@ -53,6 +69,8 @@ export const useTransferStore = create<TransferState>()((set, get) => ({
       }
       // 刷新当前目录，让结果立刻可见
       void useAppStore.getState().refresh();
+      // 通知订阅方（如目录树中展开了目标文件夹的节点）重新拉取
+      for (const listener of doneListeners) listener(payload.destDir);
       return;
     }
 

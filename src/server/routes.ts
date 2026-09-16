@@ -12,7 +12,7 @@ export function createApiRouter(ctx: CoreContext): Router {
 
   for (const name of API_NAMES) {
     router.post(`/${name}`, async (req, res) => {
-      res.json(await invokeHandler(ctx, name, req.body));
+      res.json(await invokeHandler(ctx, name, req.body, `web:${req.get('X-Watch-Session') ?? 'default'}`));
     });
   }
 

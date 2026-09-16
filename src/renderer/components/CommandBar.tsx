@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX } from 'react';
 import { Icon, type IconName } from './Icons';
 import { Menu, type MenuItem } from './Menu';
 import { useAppStore, type ViewMode } from '../store/appStore';
@@ -23,15 +23,18 @@ interface CmdButtonProps {
  * 主按钮直接执行主操作，右侧小箭头展开更多选项。
  */
 function CmdButton({ icon, label, onClick, disabled, active, title, menu }: CmdButtonProps): JSX.Element {
+  const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const split = Boolean(menu && onClick);
 
   return (
-    <div className="cmdbar__wrap">
+    <div className="cmdbar__wrap" ref={anchor}>
       <button
         type="button"
         className={`cmdbar__btn${disabled ? ' is-disabled' : ''}${active ? ' is-active' : ''}`}
         disabled={disabled}
+        aria-haspopup={menu && !split ? 'menu' : undefined}
+        aria-expanded={menu && !split ? open : undefined}
         title={title ?? label}
         onClick={() => {
           // 纯菜单按钮（如“查看”）：点主区域展开菜单；分裂按钮：执行主操作
@@ -52,20 +55,21 @@ function CmdButton({ icon, label, onClick, disabled, active, title, menu }: CmdB
           className="cmdbar__drop"
           disabled={disabled}
           title="更多选项"
+          aria-haspopup="menu"
+          aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
           <Icon name="chevronDown" size={10} />
         </button>
       )}
       {menu && open && (
-        <div className="cmdbar__popup">
           <Menu
+            anchor={anchor}
             items={menu}
             x={0}
             y={0}
             onClose={() => setOpen(false)}
           />
-        </div>
       )}
     </div>
   );

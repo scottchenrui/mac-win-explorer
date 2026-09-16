@@ -1,6 +1,7 @@
 import { fail } from '../shared/errors';
 import type { ApiHandlers } from '../shared/api-contract';
 import type {
+  ClipboardPayload,
   ConflictAction,
   ConflictPolicy,
   GuardVerdict,
@@ -241,6 +242,40 @@ export const handlers: ApiHandlers<CoreContext> = {
   cancelTransfer: {
     validate: (raw) => ({ opId: asString(asObject(raw).opId, '操作 ID') }),
     exec: async (req, ctx) => ({ accepted: ctx.transfer.cancel(req.opId) }),
+  },
+
+  // 剪贴板状态存在后端而非各窗口，才能跨窗口复制/粘贴。
+  // 每次写入都通过 clipboardBus 广播，所有窗口据此更新本地镜像。
+  setClipboard: {
+    validate: (raw) => {
+      const r = asObject(raw);
+      return {
+        mode: asTransferOp(r.mode),
+        paths: asStringArray(r.paths, '路径', MAX_BATCH_PATHS).map((p) =>
+          normalizePath(p, '路径'),
+        ),
+      };
+    },
+    exec: async (req, ctx) => {
+      const next: ClipboardPayload = { mode: req.mode, paths: req.paths };
+      ctx.clipboard = next;
+      ctx.clipboardBus.emit(next);
+      return next;
+    },
+  },
+
+  clearClipboard: {
+    validate: () => undefined,
+    exec: async (_req, ctx) => {
+      ctx.clipboard = null;
+      ctx.clipboardBus.emit(null);
+      return null;
+    },
+  },
+
+  getClipboard: {
+    validate: () => undefined,
+    exec: async (_req, ctx) => ctx.clipboard,
   },
 
   copyPathsToClipboard: {

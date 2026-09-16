@@ -1,5 +1,6 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { constants } from 'node:fs';
 import { ApiFailure } from '../shared/errors';
 import type {
   ConflictAction,
@@ -31,6 +32,7 @@ interface Plan {
   source: string;
   name: string;
   destRoot: string;
+  policy: ConflictAction;
 }
 
 interface Task {
@@ -142,7 +144,7 @@ export class TransferManager {
           throw new ApiFailure(fromNodeError(e, source));
         }
         if (st.isDirectory()) {
-          const result = await walkTree([source]);
+          const result = await walkTree([source], { strict: true, signal: task.controller.signal });
           scans.set(source, result);
           totalFiles += result.files.length;
           totalBytes += result.totalBytes;
@@ -169,28 +171,27 @@ export class TransferManager {
         const hasConflict = conflicts.some((c) => c.sourcePath === source);
         if (!hasConflict) {
           taken.add(name.toLowerCase());
-          plans.push({ source, name, destRoot: path.join(destDir, name) });
+          plans.push({ source, name, destRoot: path.join(destDir, name), policy: conflict === 'ask' ? 'keepBoth' : conflict });
           continue;
         }
 
         // ask 需要挂起等 UI 决策，其余策略直接采用
         const policy: ConflictAction =
-          conflict === 'ask' ? await this.askUser(task, conflicts, emit) : conflict;
+          conflict === 'ask' ? await this.askUser(task, conflicts.filter((item) => item.sourcePath === source), emit) : conflict;
 
         if (policy === 'skip') continue;
         if (policy === 'cancel') throw new ApiFailure({ code: 'CANCELLED', message: '操作已取消' });
         if (policy === 'keepBoth') {
           const unique = uniqueTargetName(name, taken);
           taken.add(unique.toLowerCase());
-          plans.push({ source, name, destRoot: path.join(destDir, unique) });
+          plans.push({ source, name, destRoot: path.join(destDir, unique), policy });
           continue;
         }
         // replace（retry 也按替换处理：重新写入即为重试）
-        plans.push({ source, name, destRoot: path.join(destDir, name) });
+        plans.push({ source, name, destRoot: path.join(destDir, name), policy: 'replace' });
       }
 
       // ---------- 3. 传输 ----------
-      const innerPolicy: ConflictAction = task.applyToAll ?? (conflict === 'ask' ? 'keepBoth' : conflict);
       emit({ phase: 'transfer' });
 
       for (const plan of plans) {
@@ -198,7 +199,7 @@ export class TransferManager {
         const scan = scans.get(plan.source);
         if (!scan) continue;
 
-        await this.transferOne(plan, scan, op, innerPolicy, task, (files, bytes, current) => {
+        await this.transferOne(plan, scan, op, plan.policy, task, (files, bytes, current) => {
           processedFiles += files;
           processedBytes += bytes;
           emit({
@@ -231,9 +232,10 @@ export class TransferManager {
   ): Promise<ConflictAction> {
     if (task.applyToAll) return Promise.resolve(task.applyToAll);
 
-    emit({ phase: 'conflict', conflicts, currentFile: '' });
+    if (isAborted(task)) return Promise.resolve('cancel');
     return new Promise<ConflictAction>((resolve) => {
       task.waiter = { resolve };
+      emit({ phase: 'conflict', conflicts, currentFile: '' });
     });
   }
 
@@ -247,6 +249,13 @@ export class TransferManager {
   ): Promise<void> {
     const destExists = await pathExists(plan.destRoot);
     const sourceIsDir = scan.dirs.length > 0;
+    if (scan.truncated) throw new ApiFailure({ code: 'EINVAL', message: '扫描不完整，操作已停止' });
+    if (destExists && policy !== 'keepBoth' && policy !== 'skip') {
+      const [sourceStat, destStat] = await Promise.all([fsp.lstat(plan.source), fsp.lstat(plan.destRoot)]);
+      if (sourceStat.dev === destStat.dev && sourceStat.ino === destStat.ino) {
+        throw new ApiFailure({ code: 'SAME_PATH', message: '不能替换源文件自身' });
+      }
+    }
 
     // 快路径：目标不存在时的同卷移动
     if (op === 'move' && !destExists) {
@@ -263,83 +272,97 @@ export class TransferManager {
       }
     }
 
-    if (destExists) {
-      if (policy === 'skip') return;
-      if (policy === 'replace') {
-        await fsp.rm(plan.destRoot, { recursive: true, force: true });
-      } else if (policy === 'keepBoth') {
-        // keepBoth 的目标名在计划阶段已经处理过，这里兜底
-        plan.destRoot = await uniqueDestPath(plan.destRoot);
-      }
+    if (destExists && policy === 'skip') return;
+    if (destExists && policy === 'keepBoth') plan.destRoot = await uniqueDestPath(plan.destRoot);
+    if (path.resolve(plan.source) === path.resolve(plan.destRoot)) {
+      throw new ApiFailure({ code: 'SAME_PATH', message: '不能替换源文件自身' });
     }
 
-    // 先建目录树，保证后续文件复制的父目录一定存在
-    if (sourceIsDir) {
-      for (const d of scan.dirs) {
-        const target = d.rel ? path.join(plan.destRoot, d.rel) : plan.destRoot;
-        await fsp.mkdir(target, { recursive: true });
-      }
-    }
-
-    const bigFiles = scan.files.filter((f) => f.size >= BIG_FILE_THRESHOLD);
-    const smallFiles = scan.files.filter((f) => f.size < BIG_FILE_THRESHOLD);
-
-    const copyOne = async (item: { path: string; size: number; rel: string }): Promise<void> => {
-      if (isAborted(task)) return;
-      const target = item.rel ? path.join(plan.destRoot, item.rel) : plan.destRoot;
-      const copied = await this.copyFileOrLink(item.path, target, policy, task);
-      if (copied) onProgress(1, item.size, item.path);
-    };
-
-    await mapLimit(bigFiles, BIG_FILE_CONCURRENCY, copyOne);
-    await mapLimit(smallFiles, SMALL_FILE_CONCURRENCY, copyOne);
-
-    if (op === 'move') {
-      // 删除源之前最后确认一次，避免取消时丢数据
+    // 在目标卷内暂存，完整复制后再提交；旧目标在提交成功之前保留。
+    const staging = await fsp.mkdtemp(path.join(path.dirname(plan.destRoot), '.explorer-transfer-'));
+    const payload = path.join(staging, 'payload');
+    const backup = path.join(staging, 'previous');
+    let preserveBackup = false;
+    const checkCancelled = (): void => {
       if (isAborted(task)) throw new ApiFailure({ code: 'CANCELLED', message: '操作已取消' });
-      await fsp.rm(plan.source, { recursive: true, force: true });
+    };
+    try {
+      if (sourceIsDir) {
+        for (const d of scan.dirs) {
+          checkCancelled();
+          await fsp.mkdir(d.rel ? path.join(payload, d.rel) : payload, { recursive: true });
+        }
+      }
+      const snapshots = new Map<string, Awaited<ReturnType<typeof fsp.lstat>>>();
+      const copyOne = async (item: { path: string; size: number; rel: string }): Promise<void> => {
+        checkCancelled();
+        snapshots.set(item.path, await fsp.lstat(item.path));
+        await this.copyFileOrLink(item.path, item.rel ? path.join(payload, item.rel) : payload);
+        onProgress(1, item.size, item.path);
+      };
+      // 等所有已启动的 worker 结束，才能清理暂存目录。
+      await mapLimit(scan.files.filter((f) => f.size >= BIG_FILE_THRESHOLD), BIG_FILE_CONCURRENCY, copyOne);
+      await mapLimit(scan.files.filter((f) => f.size < BIG_FILE_THRESHOLD), SMALL_FILE_CONCURRENCY, copyOne);
+      checkCancelled();
+
+      if (await pathExists(plan.destRoot)) {
+        if (policy === 'skip') return;
+        if (policy === 'keepBoth') plan.destRoot = await uniqueDestPath(plan.destRoot);
+        else {
+          await fsp.rename(plan.destRoot, backup);
+          preserveBackup = true;
+        }
+      }
+      try {
+        await fsp.rename(payload, plan.destRoot);
+      } catch (error) {
+        if (preserveBackup) {
+          try {
+            await fsp.rename(backup, plan.destRoot);
+            preserveBackup = false;
+          } catch {
+            throw new ApiFailure({ code: 'UNKNOWN', message: `替换失败，原目标保留在：${backup}`, path: backup });
+          }
+        }
+        throw error;
+      }
+      preserveBackup = false;
+      if (op === 'move') {
+        checkCancelled();
+        for (const [source, before] of snapshots) {
+          const after = await fsp.lstat(source);
+          if (before.ino !== after.ino || before.dev !== after.dev || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+            throw new ApiFailure({ code: 'CONFLICT', message: '源文件在复制期间发生变化，已保留源文件', path: source });
+          }
+        }
+        // 只删除扫描并成功复制的文件；新出现的文件会使 rmdir 失败并保留下来。
+        for (const item of scan.files) {
+          checkCancelled();
+          await fsp.unlink(item.path);
+        }
+        for (const dir of [...scan.dirs].reverse()) {
+          checkCancelled();
+          await fsp.rmdir(dir.path);
+        }
+      }
+    } finally {
+      if (!preserveBackup) await fsp.rm(staging, { recursive: true, force: true });
     }
   }
 
-  /** 返回是否真的写入了（skip 时返回 false） */
-  private async copyFileOrLink(
-    source: string,
-    dest: string,
-    policy: ConflictAction,
-    task: Task,
-  ): Promise<boolean> {
-    if (isAborted(task)) return false;
-
-    let lstat;
+  private async copyFileOrLink(source: string, dest: string): Promise<void> {
+    const stat = await fsp.lstat(source);
+    if (stat.isSymbolicLink()) {
+      await fsp.symlink(await fsp.readlink(source), dest);
+      return;
+    }
+    if (!stat.isFile()) throw new ApiFailure({ code: 'UNSUPPORTED', message: '源文件类型已变化', path: source });
+    await fsp.copyFile(source, dest, constants.COPYFILE_EXCL);
     try {
-      lstat = await fsp.lstat(source);
-    } catch (e) {
-      throw new ApiFailure(fromNodeError(e, source));
-    }
-
-    let finalDest = dest;
-    if (await pathExists(dest)) {
-      if (policy === 'skip') return false;
-      if (policy === 'replace') {
-        await fsp.rm(dest, { recursive: true, force: true });
-      } else {
-        finalDest = await uniqueDestPath(dest);
-      }
-    }
-
-    if (lstat.isSymbolicLink()) {
-      const linkTarget = await fsp.readlink(source);
-      await fsp.symlink(linkTarget, finalDest);
-      return true;
-    }
-
-    await fsp.copyFile(source, finalDest);
-    try {
-      await fsp.chmod(finalDest, lstat.mode & 0o777);
-      await fsp.utimes(finalDest, lstat.atime, lstat.mtime);
+      await fsp.chmod(dest, stat.mode & 0o777);
+      await fsp.utimes(dest, stat.atime, stat.mtime);
     } catch {
-      // 时间与权限恢复失败不影响复制结果
+      // 时间与权限恢复失败不影响复制内容。
     }
-    return true;
   }
 }

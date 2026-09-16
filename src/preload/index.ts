@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('api:watch', cb);
     return () => ipcRenderer.removeListener('api:watch', cb);
   },
+  onClipboard: (listener: (payload: unknown) => void) => {
+    const cb = (_: unknown, payload: unknown) => listener(payload);
+    ipcRenderer.on('api:clipboard', cb);
+    return () => ipcRenderer.removeListener('api:clipboard', cb);
+  },
   onMenuAction: (listener: (actionId: string) => void) => {
     const cb = (_: unknown, actionId: string) => listener(actionId);
     ipcRenderer.on('menu:action', cb);

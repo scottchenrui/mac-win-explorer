@@ -10,12 +10,23 @@ import { isTrustedFrame } from './frame-guard';
  * 每个 API 名对应 `api:${name}` 通道，handler 就是 core/ 里的同一个实现。
  */
 export function registerIpcHandlers(ctx: CoreContext): void {
+  const registeredOwners = new Set<number>();
   for (const name of API_NAMES) {
     ipcMain.handle(`${IPC_CHANNEL_PREFIX}${name}`, async (event, rawReq: unknown) => {
       if (!isTrustedFrame(event)) {
         return { ok: false, error: { code: 'FORBIDDEN', message: '不受信任的调用来源' } };
       }
-      return invokeHandler(ctx, name, rawReq);
+      const id = event.sender.id;
+      const owner = `electron:${id}`;
+      if (!registeredOwners.has(id)) {
+        registeredOwners.add(id);
+        event.sender.once('destroyed', () => {
+          ctx.watcher.releaseOwner(owner);
+          registeredOwners.delete(id);
+        });
+        event.sender.on('render-process-gone', () => ctx.watcher.releaseOwner(owner));
+      }
+      return invokeHandler(ctx, name, rawReq, owner);
     });
   }
 
@@ -29,6 +40,13 @@ export function registerIpcHandlers(ctx: CoreContext): void {
   ctx.watchBus.subscribe((changedPath) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('api:watch', { path: changedPath });
+    }
+  });
+
+  // 剪贴板变更：同样推给所有窗口，A 窗口复制的内容 B 窗口立即可粘贴
+  ctx.clipboardBus.subscribe((payload) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('api:clipboard', payload);
     }
   });
 }

@@ -1,6 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { Dirent } from 'node:fs';
+import { fail } from '../shared/errors';
 import { mapLimit } from './utils';
 
 export interface WalkItem {
@@ -19,6 +20,9 @@ export interface WalkResult {
 
 export interface WalkOptions {
   maxItems?: number;
+  /** 传输扫描不允许静默跳过不可读项目。 */
+  strict?: boolean;
+  signal?: AbortSignal;
   /** 是否跟随符号链接递归（默认否，避免链接环） */
   followSymlinks?: boolean;
 }
@@ -51,7 +55,8 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
     let st;
     try {
       st = await fsp.lstat(root);
-    } catch {
+    } catch (error) {
+      if (options.strict) throw error;
       continue;
     }
     if (st.isDirectory()) {
@@ -63,6 +68,7 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
   }
 
   while (queue.length > 0) {
+    if (options.signal?.aborted) fail('CANCELLED', '操作已取消');
     const current = queue.shift() as Pending;
 
     let real: string;
@@ -77,7 +83,8 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
     let children: Dirent[];
     try {
       children = await fsp.readdir(current.abs, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (options.strict) throw error;
       // 无权限的子目录：记录目录本身后跳过，不中断整体遍历
       dirs.push({ path: current.abs, size: 0, rel: current.rel });
       continue;
@@ -91,6 +98,11 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
     dirs.push({ path: current.abs, size: 0, rel: current.rel });
 
     for (const child of children) {
+      if (options.signal?.aborted) fail('CANCELLED', '操作已取消');
+      if (files.length + dirs.length >= maxItems) {
+        truncated = true;
+        break;
+      }
       const childAbs = path.join(current.abs, child.name);
       if (child.isDirectory()) {
         queue.push({ abs: childAbs, rel: path.join(current.rel, child.name) });
@@ -99,7 +111,8 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
         try {
           const st = await fsp.stat(childAbs);
           size = st.size;
-        } catch {
+        } catch (error) {
+          if (options.strict) throw error;
           size = 0;
         }
         files.push({ path: childAbs, size, rel: path.join(current.rel, child.name) });
@@ -107,10 +120,13 @@ export async function walkTree(roots: readonly string[], options: WalkOptions = 
       } else if (child.isSymbolicLink()) {
         // 链接本身只作为一项，不跟随
         files.push({ path: childAbs, size: 0, rel: path.join(current.rel, child.name) });
+      } else if (options.strict) {
+        fail('UNSUPPORTED', '无法安全复制此类文件', childAbs);
       }
     }
   }
 
+  if (options.strict && truncated) fail('EINVAL', '目录项目过多，无法完整扫描；源文件未删除');
   return { files, dirs, totalBytes, truncated };
 }
 

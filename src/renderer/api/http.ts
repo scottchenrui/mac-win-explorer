@@ -1,3 +1,4 @@
+import { watchSession } from './session';
 import { API_NAMES, type Api } from '@shared/api-contract';
 import type { Result } from '@shared/errors';
 
@@ -14,7 +15,7 @@ export function createHttpApi(): Api {
     api[name] = async (req?: unknown): Promise<Result<unknown>> => {
       const response = await fetch(`/api/${name}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Watch-Session': watchSession },
         body: JSON.stringify(req ?? {}),
       });
       return (await response.json()) as Result<unknown>;

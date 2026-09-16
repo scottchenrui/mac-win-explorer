@@ -90,6 +90,17 @@ export type ConflictAction = 'replace' | 'skip' | 'keepBoth' | 'retry' | 'cancel
 export type TransferOp = 'copy' | 'move';
 export type TransferPhase = 'scan' | 'transfer' | 'conflict' | 'error' | 'done' | 'cancelled';
 
+/**
+ * 跨窗口共享的剪贴板内容。
+ *
+ * 由后端（主进程 / 预览后端）统一持有并广播给所有窗口，
+ * 因此 A 窗口复制/剪切的项目可以在 B 窗口粘贴。
+ */
+export interface ClipboardPayload {
+  mode: TransferOp;
+  paths: string[];
+}
+
 export interface ConflictItem {
   sourcePath: string;
   destPath: string;

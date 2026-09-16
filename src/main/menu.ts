@@ -30,21 +30,9 @@ export function createMenu(): void {
       role: 'editMenu',
       label: '编辑',
       submenu: [
-        {
-          label: '剪切',
-          accelerator: 'CmdOrCtrl+X',
-          click: () => send('cut'),
-        },
-        {
-          label: '复制',
-          accelerator: 'CmdOrCtrl+C',
-          click: () => send('copy'),
-        },
-        {
-          label: '粘贴',
-          accelerator: 'CmdOrCtrl+V',
-          click: () => send('paste'),
-        },
+        { role: 'cut', label: '剪切', accelerator: 'CmdOrCtrl+X' },
+        { role: 'copy', label: '复制', accelerator: 'CmdOrCtrl+C' },
+        { role: 'paste', label: '粘贴', accelerator: 'CmdOrCtrl+V' },
         { type: 'separator' },
         { role: 'selectAll', label: '全选', accelerator: 'CmdOrCtrl+A' },
       ],

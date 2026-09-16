@@ -1,7 +1,7 @@
 {
   "name": "mac-win-explorer",
   "productName": "Explorer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "运行在 macOS 上的仿 Windows 资源管理器风格文件浏览器",
   "main": "dist/main/index.js",
   "private": true,
@@ -14,6 +14,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "check": "node scripts/check-contract.mjs",
+    "test": "node scripts/test.mjs",
     "smoke": "node scripts/smoke.mjs",
     "icon": "bash scripts/make-icns.sh",
     "dist": "npm run icon && npm run build && electron-builder --mac --arm64",

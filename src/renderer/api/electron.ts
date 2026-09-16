@@ -1,5 +1,5 @@
 import { API_NAMES, type Api } from '@shared/api-contract';
-import type { TransferProgress } from '@shared/types';
+import type { ClipboardPayload, TransferProgress } from '@shared/types';
 
 /**
  * Electron 通道。
@@ -14,6 +14,7 @@ export interface ElectronBridge extends Api {
   newWindow(path?: string): Promise<void>;
   onProgress(listener: (payload: TransferProgress) => void): () => void;
   onWatch(listener: (payload: { path: string }) => void): () => void;
+  onClipboard(listener: (payload: ClipboardPayload | null) => void): () => void;
   onMenuAction(listener: (actionId: string) => void): () => void;
   onOpenFile(listener: (path: string) => void): () => void;
 }

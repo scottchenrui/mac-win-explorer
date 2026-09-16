@@ -1,4 +1,5 @@
 import type { HostAdapter } from './host';
+import type { ClipboardPayload } from '../shared/types';
 import { ProgressBus } from './progress';
 import { TransferManager } from './transfer';
 import { DirectoryWatcher } from './watcher';
@@ -24,6 +25,10 @@ export interface CoreContext {
   progress: ProgressBus;
   /** 目录变更广播 */
   watchBus: EventBus<string>;
+  /** 剪贴板变更广播：任一窗口复制/剪切后同步给其它窗口 */
+  clipboardBus: EventBus<ClipboardPayload | null>;
+  /** 全局唯一的剪贴板状态，跨窗口共享 */
+  clipboard: ClipboardPayload | null;
   transfer: TransferManager;
   watcher: DirectoryWatcher;
 }
@@ -41,6 +46,8 @@ export function createContext(host: HostAdapter, appVersion: string): CoreContex
     homePath: host.homePath,
     progress: new ProgressBus(),
     watchBus: new EventBus<string>(),
+    clipboardBus: new EventBus<ClipboardPayload | null>(),
+    clipboard: null,
   } as CoreContext;
 
   ctx.transfer = new TransferManager(ctx);

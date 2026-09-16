@@ -1,7 +1,8 @@
+import { visibleEntries } from './visibleEntries';
 import { create } from 'zustand';
 import { makeComparator } from '@shared/sort';
 import type { AppError } from '@shared/errors';
-import type { FsEntry, QuickItem, SortKey, SortSpec, VolumeInfo } from '@shared/types';
+import type { ClipboardPayload, FsEntry, QuickItem, SortKey, SortSpec, VolumeInfo } from '@shared/types';
 import { api } from '../api';
 import { loadPref, savePref } from './persist';
 
@@ -56,11 +57,6 @@ function loadShowHidden(): boolean {
   return loadPref<boolean>('showHidden', false, (v) => (typeof v === 'boolean' ? v : null));
 }
 
-export interface ClipboardState {
-  mode: 'copy' | 'move';
-  paths: string[];
-}
-
 interface AppState {
   initialized: boolean;
 
@@ -88,7 +84,7 @@ interface AppState {
   selection: string[];
   anchor: string | null;
 
-  clipboard: ClipboardState | null;
+  clipboard: ClipboardPayload | null;
 
   /** 正在行内重命名的条目路径；null 表示没有。与对话框互斥（Windows 是行内编辑） */
   renamingPath: string | null;
@@ -129,6 +125,8 @@ interface AppActions {
 
   setClipboard: (mode: 'copy' | 'move', paths: string[]) => void;
   clearClipboard: () => void;
+  /** 接收后端广播的剪贴板（来自本窗口或其它窗口），更新本地镜像 */
+  applyClipboard: (payload: ClipboardPayload | null) => void;
 
   startInlineRename: (path: string) => void;
   endInlineRename: () => void;
@@ -196,6 +194,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     if (roots.ok) {
       set({ quick: roots.data.quick, volumes: roots.data.volumes });
     }
+
+    // 同步已存在的剪贴板：新窗口打开时，其它窗口之前复制的内容仍应可粘贴
+    const clip = await api.getClipboard();
+    if (clip.ok) set({ clipboard: clip.data });
 
     // 新窗口由主进程注入初始目录（与来源窗口同一位置）；无效则回退主目录
     let target = caps.ok ? caps.data.homePath : '/';
@@ -295,7 +297,11 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     void get().load();
   },
 
-  setFilter: (filter) => set({ filter }),
+  setFilter: (filter) => {
+    const visible = new Set(visibleEntries({ entries: get().entries, filter }).map((entry) => entry.path));
+    set({ filter, selection: get().selection.filter((path) => visible.has(path)),
+      anchor: get().anchor && visible.has(get().anchor!) ? get().anchor : null });
+  },
 
   setColWidth: (key, width) => {
     const next = { ...get().colWidths, [key]: clampWidth(width, DEFAULT_COL_WIDTHS[key]) };
@@ -320,8 +326,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   },
 
   selectRange: (path) => {
-    const { entries, anchor, selection } = get();
-    const names = entries.map((e) => e.path);
+    const { anchor, selection } = get();
+    const names = visibleEntries(get()).map((e) => e.path);
     const to = names.indexOf(path);
     const from = anchor ? names.indexOf(anchor) : 0;
     if (to < 0 || from < 0) {
@@ -333,17 +339,27 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     set({ selection: [...new Set([...selection, ...range])], anchor: path });
   },
 
-  selectAll: () => set({ selection: get().entries.map((e) => e.path) }),
+  selectAll: () => set({ selection: visibleEntries(get()).map((e) => e.path) }),
 
   invertSelection: () => {
     const selected = new Set(get().selection);
-    set({ selection: get().entries.filter((e) => !selected.has(e.path)).map((e) => e.path) });
+    set({ selection: visibleEntries(get()).filter((e) => !selected.has(e.path)).map((e) => e.path) });
   },
 
   clearSelection: () => set({ selection: [], anchor: null }),
 
-  setClipboard: (mode, paths) => set({ clipboard: { mode, paths: [...paths] } }),
-  clearClipboard: () => set({ clipboard: null }),
+  // 剪贴板的真相在后端：本地先乐观更新保证跟手，再同步给后端，
+  // 后端会广播回所有窗口（含本窗口），其它窗口据此得到相同内容。
+  setClipboard: (mode, paths) => {
+    const next: ClipboardPayload = { mode, paths: [...paths] };
+    set({ clipboard: next });
+    void api.setClipboard({ mode, paths: next.paths });
+  },
+  clearClipboard: () => {
+    set({ clipboard: null });
+    void api.clearClipboard();
+  },
+  applyClipboard: (payload) => set({ clipboard: payload }),
 
   startInlineRename: (path) => set({ renamingPath: path, selection: [path], anchor: path }),
   endInlineRename: () => {

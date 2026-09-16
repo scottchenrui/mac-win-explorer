@@ -39,32 +39,46 @@ export function useFileActions() {
     return false;
   };
 
-  const copySelection = (): void => {
-    if (selection.length === 0) return;
-    app.setClipboard('copy', selection);
-    toast('info', `已复制 ${selection.length} 个项目`);
-  };
+  const copySelection = (): void => copyPaths(selection);
 
-  const cutSelection = (): void => {
-    if (selection.length === 0) return;
-    app.setClipboard('move', selection);
-    toast('info', `已剪切 ${selection.length} 个项目`);
-  };
+  const cutSelection = (): void => cutPaths(selection);
 
-  const pasteHere = async (): Promise<void> => {
-    const clipboard = app.clipboard;
+  /** 复制任意路径（选中项、目录树节点等），同步到跨窗口共享的剪贴板 */
+  function copyPaths(paths: string[]): void {
+    if (paths.length === 0) return;
+    app.setClipboard('copy', paths);
+    toast('info', `已复制 ${paths.length} 个项目`);
+  }
+
+  /** 剪切任意路径 */
+  function cutPaths(paths: string[]): void {
+    if (paths.length === 0) return;
+    app.setClipboard('move', paths);
+    toast('info', `已剪切 ${paths.length} 个项目`);
+  }
+
+  const pasteHere = (): Promise<void> => pasteTo(app.path);
+
+  /**
+   * 粘贴到任意目标目录（当前目录、目录树节点等）。
+   *
+   * 剪贴板读自 store 的最新快照（可能来自其它窗口的复制），
+   * 因此 A 窗口复制的内容能在 B 窗口粘贴。
+   */
+  async function pasteTo(destDir: string): Promise<void> {
+    const { clipboard, clearClipboard } = useAppStore.getState();
     if (!clipboard) return;
 
     // 剪切后粘回原位置没有意义
-    const sameDir = clipboard.paths.every((p) => p.slice(0, p.lastIndexOf('/')) === app.path);
+    const sameDir = clipboard.paths.every((p: string) => p.slice(0, p.lastIndexOf('/')) === destDir);
     if (clipboard.mode === 'move' && sameDir) {
       toast('info', '目标位置与源位置相同');
       return;
     }
 
-    await useTransferStore.getState().startPaste(clipboard.mode, clipboard.paths, app.path, 'ask');
-    if (clipboard.mode === 'move') app.clearClipboard();
-  };
+    await useTransferStore.getState().startPaste(clipboard.mode, clipboard.paths, destDir, 'ask');
+    if (clipboard.mode === 'move') clearClipboard();
+  }
 
   const requestDelete = (paths: string[] = selection): void => {
     if (paths.length === 0) return;
@@ -165,7 +179,10 @@ export function useFileActions() {
     submitName,
     copySelection,
     cutSelection,
+    copyPaths,
+    cutPaths,
     pasteHere,
+    pasteTo,
     requestDelete,
     confirmDelete,
     openEntry,

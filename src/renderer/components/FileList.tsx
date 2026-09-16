@@ -1,3 +1,4 @@
+import { visibleEntries } from '../store/visibleEntries';
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { toast } from '../store/toastStore';
 import { formatBytes, formatDateTime, iconCategoryFor } from '@shared/format';
@@ -268,11 +269,7 @@ export function FileList(): JSX.Element {
     cancelPendingRename();
   }, [app.path]);
 
-  const visible = useMemo(() => {
-    const keyword = app.filter.trim().toLowerCase();
-    if (!keyword) return app.entries;
-    return app.entries.filter((entry) => entry.name.toLowerCase().includes(keyword));
-  }, [app.entries, app.filter]);
+  const visible = useMemo(() => visibleEntries(app), [app.entries, app.filter]);
 
   const isGrid = app.view === 'icons';
   const cols = isGrid ? Math.max(1, Math.floor(size.width / GRID_ITEM_WIDTH)) : 1;

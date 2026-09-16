@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icons';
 
 export interface MenuItem {
@@ -18,28 +19,39 @@ export interface MenuProps {
   x: number;
   y: number;
   onClose: () => void;
+  anchor?: React.RefObject<HTMLElement | null>;
 }
 
 /**
  * 通用弹出菜单：右键菜单与命令栏下拉共用。
  * 位置会被钳制在视口内，避免在窗口边缘弹出时半个菜单跑到屏幕外。
  */
-export function Menu({ items, x, y, onClose }: MenuProps): JSX.Element {
+export function Menu({ items, x, y, onClose, anchor }: MenuProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const left = Math.min(x, window.innerWidth - rect.width - 8);
-    const top = Math.min(y, window.innerHeight - rect.height - 8);
-    setPos({ left: Math.max(8, left), top: Math.max(8, top) });
-  }, [x, y]);
+    const reposition = (): void => {
+      const rect = el.getBoundingClientRect();
+      const anchorRect = anchor?.current?.getBoundingClientRect();
+      const left = Math.min(anchorRect?.left ?? x, window.innerWidth - rect.width - 8);
+      const top = Math.min(anchorRect ? anchorRect.bottom + 2 : y, window.innerHeight - rect.height - 8);
+      setPos({ left: Math.max(8, left), top: Math.max(8, top) });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [x, y, anchor]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node) && !anchor?.current?.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -54,9 +66,9 @@ export function Menu({ items, x, y, onClose }: MenuProps): JSX.Element {
       window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [onClose]);
+  }, [onClose, anchor]);
 
-  return (
+  return createPortal(
     <div className="menu" ref={ref} style={{ left: pos.left, top: pos.top }} role="menu">
       {items.map((item) => (
         <div key={item.id} className="menu__group">
@@ -82,7 +94,8 @@ export function Menu({ items, x, y, onClose }: MenuProps): JSX.Element {
           </button>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

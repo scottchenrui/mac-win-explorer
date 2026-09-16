@@ -21,14 +21,17 @@ export function createSseHandler(ctx: CoreContext) {
 
     const offProgress = ctx.progress.subscribe((payload) => send('progress', payload));
     const offWatch = ctx.watchBus.subscribe((dir) => send('watch', { path: dir }));
+    const offClipboard = ctx.clipboardBus.subscribe((payload) => send('clipboard', payload));
 
     // 心跳：防止中间层把空闲连接掐断
     const heartbeat = setInterval(() => res.write(': ping\n\n'), 15_000);
 
     req.on('close', () => {
+      if (typeof req.query.watchSession === 'string') ctx.watcher.releaseOwner(`web:${req.query.watchSession}`);
       clearInterval(heartbeat);
       offProgress();
       offWatch();
+      offClipboard();
     });
   };
 }
